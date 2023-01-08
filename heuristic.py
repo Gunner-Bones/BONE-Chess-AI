@@ -105,7 +105,7 @@ def global_is_legal(board, color, move):
 	return il
 
 def get_piece_type(board, move):
-	return board.piece_at(chess.parse_square(move.uci()[2:])).piece_type
+	return board.piece_at(chess.parse_square(move.uci()[:2])).piece_type
 
 def get_color_pieces(board, color, ptypes=CPT_CONV.keys()):
 	ret = {}
@@ -234,6 +234,46 @@ def piece_gives_checkmate(board, at):
 		if move_gives_checkmate(board, move):
 			return True
 	return False
+
+def move_to_san_better(board, move):
+	"""rewrote a san() function because chess.board.san() is almost entirely broken
+	   we also ain't doin no drops or uci tomfoolery"""
+	# Null
+	if not move:
+		return '--'
+	# Castling
+	if board.is_castling(move):
+		if chess.square_file(move.to_square) < chess.square_file(move.from_square):
+			return "O-O-O"
+		else:
+			return "O-O"
+	# Normal move
+	pt = get_piece_type(board, move)
+	spt = CPT_CONV[pt].upper() if pt != chess.PAWN else ''
+	spos = chess.square_name(move.to_square)
+	san = spt + spos
+	# Disambiguous moves
+	lm = get_all_legal_moves(board, board.turn)
+	same_moves = [m for m in lm if CPT_CONV[get_piece_type(board, chess.Move.from_uci(m))].upper() == cpt]
+	if len(same_moves) == 2:
+		common = same_moves[0][0] if same_moves[0][0] == same_moves[1][0] else same_moves[0][1]
+		for sm in same_moves:
+			if sm[:2] == spos:
+				san = spt + sm[:2].replace(common,'') + spos
+				break
+	# Capture
+	if board.is_capture(move):
+		san = spt + 'x' + spos
+	# Promotion
+	if move.promotion:
+		san += '=' + CPT_CONV[move.promotion].upper()
+	# Check
+	if board.gives_check(move):
+		san += '+'
+	# Checkmate
+	if piece_gives_checkmate(board, spos):
+		san = san.replace('+','') + '#'
+	return san
 
 def chess_heuristic():
 	return {'p': 0, 'r': 0, 'b': 0, 'n': 0, 'q': 0, 'k': 0}
