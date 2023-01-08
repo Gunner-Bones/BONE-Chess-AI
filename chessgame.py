@@ -1,3 +1,4 @@
+import copy
 import chess
 import pygame_chess_api.api as pcaa
 from pygame_chess_api.api import Board
@@ -83,16 +84,23 @@ def pca_display(cboard):
 
 class ChessGame:
 	# For use with the 'chess' library
-	def __init__(self, h):
-		self.heuristic = h
+	def __init__(self, hc):
+		self.heuristic_class = hc
+		self.moves = []
 	def actions(self, board):
 		return list(board.legal_moves)
-	def result(self, board, move):
-		new_board = board
-		new_board.push_san(move)
+	def move(self, board, move):
+		new_board = copy.deepcopy(board)
+		self.moves.append(new_board.push_san(move))
+		return new_board
+	def unmove(self, board):
+		new_board = copy.deepcopy(board)
+		rem_move = new_board.pop()
+		self.moves.remove(rem_move)
 		return new_board
 	def utility(self, board):
-		return self.heuristic(board)
+		hc = heuristic_class(color=self.who_turn(board), board=board)
+		return self.hc.score()
 	def terminal_test(self, board):
 		return board.is_game_over()
 	def who_turn(self, board):
@@ -100,3 +108,5 @@ class ChessGame:
 	def display(self, board):
 		# Uses the 'pygame_chess_api' library
 		pca_display(board)
+	def __repr__(self):
+		return 'Heuristic: ' + str(self.heuristic) + '\nMoves: ' + (','.join([m.uci() for m in self.moves]))[:-1] + '\n'

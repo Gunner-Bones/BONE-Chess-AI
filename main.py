@@ -11,5 +11,9 @@ def demo_scholarsmate():
 	board.push_san("Nf6")
 	board.push_san("Qxf7")
 	cg.pca_display(board)
+
+def demo_normal():
+	board = chess.Board()
+	cg.pca_display(board)
 	
-demo_scholarsmate()
+demo_normal()
