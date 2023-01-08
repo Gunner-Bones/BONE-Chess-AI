@@ -31,6 +31,69 @@ def relative_square_math(color, pos, h=0, v=0):
 sm = square_math
 rsm = relative_square_math
 
+def move_to_san(board, move, long=False):
+	# fixed pychess board.san() function because its bugged and always asserts, you're welcome
+	# Null move.
+	if not move:
+		return "--"
+	# Drops.
+	if move.drop:
+		san = ""
+		if move.drop != chess.PAWN:
+			san = chess.piece_symbol(move.drop).upper()
+		san += "@" + chess.SQUARE_NAMES[move.to_square]
+		return san
+	# Castling.
+	if board.is_castling(move):
+		if chess.square_file(move.to_square) < chess.square_file(move.from_square):
+			return "O-O-O"
+		else:
+			return "O-O"
+	piece_type = get_piece_type(board, move)
+	capture = board.is_capture(move)
+	if piece_type == chess.PAWN:
+		san = ""
+	else:
+		san = chess.piece_symbol(piece_type).upper()
+	if long:
+		san += chess.SQUARE_NAMES[move.from_square]
+	elif piece_type != chess.PAWN:
+		# Get ambiguous move candidates.
+		# Relevant candidates: not exactly the current move,
+		# but to the same square.
+		others = 0
+		from_mask = board.pieces_mask(piece_type, board.turn)
+		from_mask &= ~chess.BB_SQUARES[move.from_square]
+		to_mask = chess.BB_SQUARES[move.to_square]
+		for candidate in board.generate_legal_moves(from_mask, to_mask):
+			others |= chess.BB_SQUARES[candidate.from_square]
+		# Disambiguate.
+		if others:
+			row, column = False, False
+			if others & chess.BB_RANKS[chess.square_rank(move.from_square)]:
+				column = True
+			if others & chess.BB_FILES[chess.square_file(move.from_square)]:
+				row = True
+			else:
+				column = True
+			if column:
+				san += chess.FILE_NAMES[chess.square_file(move.from_square)]
+			if row:
+				san += chess.RANK_NAMES[chess.square_rank(move.from_square)]
+	elif capture:
+		san += chess.FILE_NAMES[chess.square_file(move.from_square)]
+	# Captures.
+	if capture:
+		san += "x"
+	elif long:
+		san += "-"
+	# Destination square.
+	san += chess.SQUARE_NAMES[move.to_square]
+	# Promotion.
+	if move.promotion:
+		san += "=" + chess.piece_symbol(move.promotion).upper()
+	return san
+
 def global_is_legal(board, color, move):
 	il = None
 	if board.turn != color:
@@ -40,6 +103,9 @@ def global_is_legal(board, color, move):
 	else:
 		il = board.is_legal(move)
 	return il
+
+def get_piece_type(board, move):
+	return board.piece_at(chess.parse_square(move.uci()[2:])).piece_type
 
 def get_color_pieces(board, color, ptypes=CPT_CONV.keys()):
 	ret = {}
@@ -154,17 +220,36 @@ def get_all_pseudo_moves(board, color):
 		am += get_type_pseudo_moves(board, color, pt)
 	return am
 
+def move_gives_checkmate(board, move):
+	board.push(move)
+	try:
+		return board.is_checkmate()
+	finally:
+		board.pop()
+
+def piece_gives_checkmate(board, at):
+	moves = get_legal_moves_better(board, at)
+	for m in moves:
+		move = chess.Move.from_uci(m)
+		if move_gives_checkmate(board, move):
+			return True
+	return False
+
 def chess_heuristic():
 	return {'p': 0, 'r': 0, 'b': 0, 'n': 0, 'q': 0, 'k': 0}
 
+def check_heuristic():
+	return {'checkmate': 0, 'check': 0}
+
 # heuristic constants
+HEURISTIC_MAX = 50000
 WEIGHT_MATERIAL = {
-	'p': 10,
-	'n': 33,
-	'b': 38,
-	'r': 50,
-	'q': 90,
-	'k': 900
+	'p': 100,
+	'n': 330,
+	'b': 360,
+	'r': 500,
+	'q': 900,
+	'k': 0 # players always have a king unless the game ends
 }
 WEIGHT_MOBILITY = {
 	'p': 20,
@@ -174,14 +259,21 @@ WEIGHT_MOBILITY = {
 	'q': 20,
 	'k': 5
 }
-WEIGHT_PROTECTS = {
-	'p': 15,
-	'n': 25,
-	'b': 35,
-	'r': 40,
-	'q': 90,
-	'k': 900
+WEIGHT_PROTECTS = { # should be less than half material weight so capturing is weighted better than attacking
+	'p': 25,
+	'n': 80,
+	'b': 90,
+	'r': 120,
+	'q': 295,
+	'k': 9000
 }
+VALUE_WEIGHT_GOODATTACK = 2 # enemy piece being attacked isn't protected
+VALUE_WEIGHT_FORKINGMULTIPLIER = 3 # forking gives a chance to hang enemy pieces, so it's better than a normal attack
+WEIGHT_WINNING = {
+	'checkmate': HEURISTIC_MAX,
+	'check': int(HEURISTIC_MAX / 1000)
+}
+VALUE_WEIGHT_CHECKMULTIPLIER = 10 # for every succeeding piece that checks, the check score multiplies by this much
 
 class ChessHeuristic:
 	def __init__(self, color, board, htype=1):
@@ -214,14 +306,14 @@ class ChessSimpleHeuristic(ChessHeuristic):
 			score[pt] += captured
 		return score
 	def h_mobility(self, color):
-		""" Evaluates how many pieces can move. """
+		""" Evaluates what pieces can move. """
 		score = chess_heuristic()
 		for pt in CPT_CONV.keys():
 			pts = len(get_type_legal_moves(self.b, color, pt))
 			score[CPT_CONV[pt]] += pts
 		return score
 	def h_protects(self, color):
-		""" Evaluates how many pieces are protected. """
+		""" Evaluates what pieces are protected. """
 		score = chess_heuristic()
 		pieces = get_color_pieces(self.b, color)
 		lm = [m[2:] for m in get_all_pseudo_moves(self.b, color)]
@@ -231,14 +323,64 @@ class ChessSimpleHeuristic(ChessHeuristic):
 			if pos in lm and pos in o_lm:
 				score[CPT_CONV[piece.piece_type]] += 1
 		return score
+	def h_attacks(self, color):
+		""" Evaluates what pieces are being attacked. Extra points if attacked piece isn't protected. 
+			Scoring is inverted, points total towards which enemy pieces are being attacked, not
+			which ally pieces are attacking."""
+		score = chess_heuristic()
+		o_pieces = get_color_pieces(self.b, not color)
+		lm = [m[2:] for m in get_all_pseudo_moves(self.b, color)]
+		o_lm = [m[2:] for m in get_all_legal_moves(self.b, not color)]
+		for op in o_pieces.items():
+			opos,opiece = op[0],op[1]
+			if opos in lm:
+				times = 1
+				if opos not in o_lm:
+					times *= VALUE_WEIGHT_GOODATTACK
+				score[CPT_CONV[opiece.piece_type]] += times
+		return score
+	def h_forking(self, color):
+		""" Evaluates what pieces are being attacked in a fork. Scoring is inverted. """
+		score = chess_heuristic()
+		o_pieces = get_color_pieces(self.b, not color).items()
+		lm = [m[2:] for m in get_all_pseudo_moves(self.b, color)]
+		o_lm = [m[2:] for m in get_all_legal_moves(self.b, not color)]
+		m_attacks = {}
+		for m in lm:
+			m_attacks[m] = []
+			for op in o_pieces:
+				opos,opiece = op[0],op[1]
+				if opos == m:
+					m_attacks[m].append(opiece)
+		m_forks = [[k,v] for k,v in m_attacks if len(v) > 1]
+		if m_forks:
+			for mf in m_forks:
+				forked = mf[1]
+				for f in forked:
+					score[CPT_CONV[opiece.piece_type]] += VALUE_WEIGHT_FORKINGMULTIPLIER
+		return score
+	def h_winning(self, color):
+		""" Evaluates if you have check or checkmate. Check value is higher if more pieces are checking. """
+		score = check_heuristic()
+		checkers = list(self.b.checkers())
+		if checkers:
+			for ck in checkers:
+				score['check'] = 1 if not score['check'] else score['check'] * VALUE_WEIGHT_CHECKMULTIPLIER
+				if piece_gives_checkmate(self.b, ck):
+					score['checkmate'] += 1
+					break
+		return score
 	def score(self):
 		""" Returns the heuristic score. """
 		FUNCTIONS_SIMPLEHEURISTIC = {
-			# NORMAL
+			# ALL
 			1: [[self.h_material, WEIGHT_MATERIAL],
 				[self.h_possession, WEIGHT_MATERIAL],
 				[self.h_mobility, WEIGHT_MOBILITY],
-				[self.h_protects, WEIGHT_PROTECTS]],
+				[self.h_protects, WEIGHT_PROTECTS],
+				[self.h_attacks, WEIGHT_PROTECTS],
+				[self.h_forking, WEIGHT_PROTECTS],
+				[self.h_winning, WEIGHT_WINNING]],
 			# MATERIAL ONLY
 			2: [[self.h_material, WEIGHT_MATERIAL]]
 		}
@@ -260,7 +402,7 @@ def test_simple():
 	ocsh = ChessSimpleHeuristic(not color, board)
 	print(board)
 	print(CC_CONV[color], ':', csh.score())
-	print(CC_CONV[not color], ':', ocsh.score())
+	print(CC_CONV[not color], ':', -ocsh.score())
 
 def debug_input(starting_san=[]):
 	board = chess.Board()
@@ -277,7 +419,7 @@ def debug_input(starting_san=[]):
 	while True:
 		print(board)
 		print(CC_CONV[color], 'score =', csh.score())
-		print(CC_CONV[not color], 'score =', ocsh.score())
+		print(CC_CONV[not color], 'score =', -ocsh.score())
 		valid_san = False
 		while not valid_san:
 			san = input('Move ' + CC_CONV[board.turn] + ':')
@@ -296,4 +438,4 @@ def debug_lm():
 	print(get_legal_moves_better(board,'e2'))
 	print(get_legal_moves_better(board,'c7'))
 
-test_simple()
+#debug_input()

@@ -1,12 +1,14 @@
 import copy
 import chess
+import pygame
+import random
 import pygame_chess_api.api as pcaa
-from pygame_chess_api.api import Board
+from pygame_chess_api.api import Board, Piece
 from pygame_chess_api.render import Gui
+import heuristic as hrs
+import mcts
 
-PCA_WHITE_SAN = ''
-PCA_BLACK_SAN = ''
-
+PCA_AI_HEUR = None
 pca_types = {
 	'p': pcaa.Pawn,
 	'n': pcaa.Knight,
@@ -14,6 +16,30 @@ pca_types = {
 	'r': pcaa.Rook,
 	'q': pcaa.Queen,
 	'k': pcaa.Check
+}
+
+def ai_mcts_player(cboard):
+	global PCA_AI_HEUR
+	game = ChessGame(hc=PCA_AI_HEUR)
+	mcts_board = mcts.MCTS(cboard, game, N=MCTS_SEARCH)
+	san_move = mcts_board.san(mcts_board.peek())
+	return san_move
+
+def ai_random_player(cboard):
+	random_move = random.choice(list(cboard.legal_moves))
+	cboard.push(random_move)
+	return hrs.move_to_san(cboard, random_move)
+
+PCA_AI_CBOARD = None
+PCA_AI_FUNC = ai_mcts_player
+PCA_AI_HEUR = hrs.ChessSimpleHeuristic
+
+pca_ai_functions = {
+	'mcts': ai_mcts_player,
+	'random': ai_random_player
+}
+pca_ai_heuristics = {
+	'simple': hrs.ChessSimpleHeuristic
 }
 
 def pca_get_piece(board, pos):
@@ -62,17 +88,12 @@ def pca_recent_san_move(pboard):
 	recent_move = pboard.move_history[len(pboard.move_history)-1]
 	return pca_move_to_san(recent_move)
 
-def pca_ai_black_move(pboard):
-	global PCA_BLACK_SAN
-	global PCA_WHITE_SAN
-	PCA_WHITE_SAN = pca_recent_san_move(pboard)
-	san_to_pca_move(pboard, PCA_BLACK_SAN)
-
-def pca_ai_white_move(pboard):
-	global PCA_BLACK_SAN
-	global PCA_WHITE_SAN
-	PCA_BLACK_SAN = pca_recent_san_move(pboard)
-	san_to_pca_move(pboard, PCA_WHITE_SAN)
+def pca_ai_move(pboard):
+	global PCA_AI_CBOARD
+	global PCA_AI_FUNC
+	san = PCA_AI_FUNC(PCA_AI_CBOARD)
+	print('AI move:',san)
+	san_to_pca_move(pboard, san)
 
 def pca_display(cboard):
 	pboard = Board()
@@ -82,13 +103,74 @@ def pca_display(cboard):
 		san_to_pca_move(pboard,m)
 	gui.run_pygame_loop()
 
+def pca_ai_display(cboard, settings):
+	global PCA_AI_CBOARD
+	global PCA_AI_FUNC
+	global PCA_AI_HEUR
+	PCA_AI_CBOARD = cboard
+	if settings['algorithm']:
+		PCA_AI_FUNC = pca_ai_functions[settings['algorithm']]
+	if settings['evaluation']:
+		PCA_AI_HEUR = pca_ai_heuristics[settings['evaluation']]
+	pboard = Board()
+	cmbg = [Piece.WHITE]
+	match settings['ai_color']:
+		case 'white':
+			cmbg = [Piece.BLACK]
+		case 'black':
+			cmbg = [Piece.WHITE]
+	gui = BetterGui(pboard, colors_managed_by_gui=cmbg)
+	gui.run_better_pygame_loop(better_ai_function=pca_ai_move)
+
+class BetterGui(Gui):
+	""" Extends pygame_chess_api.render.Gui for better chess game functionality with this program. """
+	def mouse_released(self):
+		global PCA_AI_CBOARD
+		super().mouse_released()
+		rpsan = pca_recent_san_move(self.board)
+		rcmove = None
+		try:
+			rcmove = PCA_AI_CBOARD.peek()
+		except IndexError:
+			rcmove = chess.Move.from_uci('0000')
+		if rpsan[-2:] != rcmove.uci()[2:]:
+			PCA_AI_CBOARD.push_san(rpsan)
+			rbsan = hrs.move_to_san(PCA_AI_CBOARD,rcmove)
+			print('Human move:',rbsan)
+	def run_better_pygame_loop(self, better_ai_function=None):
+		self.screen = pygame.display.set_mode(self.SCREEN_SIZE)
+		pygame.display.set_caption(self.window_title)
+		self.clock = pygame.time.Clock()
+		stop_loop = False
+		while not stop_loop:
+			for event in pygame.event.get():
+				if event.type == pygame.QUIT:
+					stop_loop = True
+					break
+				if event.type == pygame.MOUSEBUTTONDOWN:
+					mouse_presses = pygame.mouse.get_pressed()
+					if mouse_presses[0] == True: #left click
+						self.mouse_left_clicked()
+				if event.type == pygame.MOUSEBUTTONUP:
+					self.mouse_released()
+			self.draw_board()
+			if self.board.cur_color_turn not in self.colors_managed and not self.board.game_ended:
+				cur_turn = self.board.cur_color_turn
+				if better_ai_function is None:
+					raise ValueError("You must specify a function_for_AIs when calling Gui.run_pygame_loop because you configured that the Gui object shouln't manage every color")
+				external_AI_output = better_ai_function(self.board)
+				if self.board.cur_color_turn == cur_turn:
+					raise BaseException("function_for_AIs didn't changed the turn's color/ended turn, please verify that you're moving a piece with your AI")
+				self.need_screen_update = True
+			self.clock.tick(self.FPS)
+
 class ChessGame:
 	# For use with the 'chess' library
-	def __init__(self, hc):
+	def __init__(self, hc=hrs.ChessSimpleHeuristic):
 		self.heuristic_class = hc
 		self.moves = []
 	def actions(self, board):
-		return list(board.legal_moves)
+		return hrs.get_all_legal_moves(board, board.turn)
 	def move(self, board, move):
 		new_board = copy.deepcopy(board)
 		self.moves.append(new_board.push_san(move))
@@ -99,8 +181,10 @@ class ChessGame:
 		self.moves.remove(rem_move)
 		return new_board
 	def utility(self, board):
+		max_h = hrs.HEURISTIC_MAX
 		hc = heuristic_class(color=self.who_turn(board), board=board)
-		return self.hc.score()
+		utility = self.hc.score() / max_h 
+		return utility if utility <= 1 else 1
 	def terminal_test(self, board):
 		return board.is_game_over()
 	def who_turn(self, board):

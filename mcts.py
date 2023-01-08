@@ -4,10 +4,9 @@ import chessgame
 import math
 import random
 import heuristic as hrs
-import numpy as np
 
 # hyperparameters
-C = 1.5 # exploration constant
+C = 1.4 # exploration constant
 N = 1000 # MCTS depth
 
 class Node:
@@ -25,12 +24,12 @@ def UCB(node):
 	-Qta is success rate or u / n
 	-C is exploration constant (1 < C < 2 for good results)
 	-pn is parent node n
-	-u is utility or win score
+	-u is utility or win score (0 < u < 1)
 	-n is number of times traversed
 	"""
-	return -np.inf if not node.n else (node.u / node.n) + (C * math.sqrt(np.log(node.parent.n) / node.n))
+	return float('inf') if not node.n else (node.u / node.n) + (C * math.sqrt(math.log(node.parent.n) / node.n))
 
-def MCTS(state, game, N=1000, heuristic_class=hrs.ChessSimpleHeuristic):
+def MCTS(state, game, N=100):
 	def select(node):
 		if node.children:
 			return select(max(node.children, key=UCB))
@@ -38,7 +37,7 @@ def MCTS(state, game, N=1000, heuristic_class=hrs.ChessSimpleHeuristic):
 			return node
 	def expand(node):
 		if not node.children and not game.terminal_test(node.state):
-			node.children = [Node(state=game.move(board=state,move=move),parent=node) for move in list(state.legal_moves)]
+			node.children = [Node(state=game.move(board=state,move=move),parent=node) for move in list(hrs.get_all_legal_moves(state, state.turn))]
 		return select(node)
 	def rollout(game, state):
 		sim_state = state
@@ -46,7 +45,7 @@ def MCTS(state, game, N=1000, heuristic_class=hrs.ChessSimpleHeuristic):
 			action = random.choice(game.actions(state))
 			sim_state = game.move(state, action)
 		u = game.utility(sim_state)
-		return -u
+		return u
 	def backpropagation(node, utility):
 		if utility > 0:
 			node.u += utility
@@ -60,5 +59,5 @@ def MCTS(state, game, N=1000, heuristic_class=hrs.ChessSimpleHeuristic):
 		child = expand(leaf)
 		result = rollout(game, child.state)
 		backpropagation(child, result)
-	max_state = max(root.children, key=lambda c: c.n)
-	return max_state
+	best_node = max(root.children, key=lambda c: c.u / c.n)
+	return best_node.state
