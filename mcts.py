@@ -39,7 +39,7 @@ def UCB(node):
 
 MCTS_LAST_VALUE = 0
 
-def MCTS(state, game, D=15, E=10):
+def MCTS(state, game, D, E):
 	def select(node, di):
 		if node.children and di < D:
 			return select(node=max(node.children, key=UCB), di=di+1)

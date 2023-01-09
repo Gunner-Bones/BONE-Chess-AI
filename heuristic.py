@@ -433,6 +433,9 @@ class ChessSimpleHeuristic(ChessHeuristic):
 					score['checkmate'] += 1
 					break
 		return score
+	def h_losing(self, color):
+		""" Evaluates if you are in check or checkmate. Check value is higher if more pieces are checking. """
+		return self.h_winning(not color)
 	def score(self):
 		""" Returns the heuristic score. """
 		FUNCTIONS_SIMPLEHEURISTIC = {
@@ -443,7 +446,8 @@ class ChessSimpleHeuristic(ChessHeuristic):
 				[self.h_protects, WEIGHT_PROTECTS],
 				[self.h_attacks, WEIGHT_PROTECTS],
 				[self.h_forking, WEIGHT_PROTECTS],
-				[self.h_winning, WEIGHT_WINNING]],
+				[self.h_winning, WEIGHT_WINNING],
+				[self.h_losing, WEIGHT_WINNING]],
 			# MATERIAL ONLY
 			2: [[self.h_material, WEIGHT_MATERIAL]]
 		}

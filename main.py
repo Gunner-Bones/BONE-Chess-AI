@@ -18,7 +18,7 @@ SETTINGS = {
 	'evaluation': 'simple',
 	'algorithm': 'mcts',
 	'depth': 15,
-	'breadth': 100
+	'breadth': 50
 }
 
 def demo_scholarsmate():
