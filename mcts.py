@@ -3,6 +3,7 @@ import chess
 import chessgame
 import math
 import random
+import threading
 import heuristic as hrs
 
 # hyperparameters
@@ -16,6 +17,13 @@ class Node:
 		self.parent = parent
 		self.n = 0
 		self.u = 0
+	def __repr__(self):
+		strr = 'state: ' + hrs.move_to_san_better(self.state, self.state.peek()) + '\n'
+		strr += 'children: ' + str(len(self.children)) + '\n'
+		strr += 'has parent: ' + str(bool(self.parent)) + '\n'
+		strr += 'traversed: ' + str(self.n) + '\n'
+		strr += 'utility: ' + str(self.u) + '\n'
+		return strr
 
 def UCB(node):
 	"""
@@ -29,21 +37,27 @@ def UCB(node):
 	"""
 	return float('inf') if not node.n else (node.u / node.n) + (C * math.sqrt(math.log(node.parent.n) / node.n))
 
-def MCTS(state, game, N=100):
-	def select(node):
-		if node.children:
-			return select(max(node.children, key=UCB))
+MCTS_LAST_VALUE = 0
+
+def MCTS(state, game, D=15, E=10):
+	def select(node, di):
+		if node.children and di < D:
+			return select(node=max(node.children, key=UCB), di=di+1)
 		else:
 			return node
-	def expand(node):
+	def expand(node, di):
 		if not node.children and not game.terminal_test(node.state):
-			node.children = [Node(state=game.move(board=state,move=move),parent=node) for move in list(hrs.get_all_legal_moves(state, state.turn))]
-		return select(node)
-	def rollout(game, state):
-		sim_state = state
-		while not game.terminal_test(state):
-			action = random.choice(game.actions(state))
+			node.children = [Node(state=game.move(board=node.state.copy(),move=move),parent=node) for move in game.actions(node.state)]
+		return select(node, di)
+	def rollout(game, state, di):
+		sim_state = state.copy()
+		while not game.terminal_test(state) and di < D:
+			available_actions = game.actions(state)
+			if not available_actions:
+				break
+			action = random.choice(available_actions)
 			sim_state = game.move(state, action)
+			di += 1
 		u = game.utility(sim_state)
 		return u
 	def backpropagation(node, utility):
@@ -54,10 +68,17 @@ def MCTS(state, game, N=100):
 			backpropagation(node.parent, -utility)
 
 	root = Node(state=state)
-	for _ in range(N):
-		leaf = select(root)
-		child = expand(leaf)
-		result = rollout(game, child.state)
+	for i in range(E):
+		di = 0
+		print('-iteration',i)
+		leaf = select(root, di)
+		print('-selected')
+		child = expand(leaf, di)
+		print('-expanded')
+		result = rollout(game, child.state, di)
+		print('-rollout result',result)
 		backpropagation(child, result)
-	best_node = max(root.children, key=lambda c: c.u / c.n)
+		print('-backpropped with new traversal',child.n)
+	print([[c.state.peek().uci(), c.u] for c in root.children])
+	best_node = max(root.children, key=lambda c: c.u / c.n if c.n else c.u)
 	return best_node.state

@@ -105,7 +105,14 @@ def global_is_legal(board, color, move):
 	return il
 
 def get_piece_type(board, move):
-	return board.piece_at(chess.parse_square(move.uci()[:2])).piece_type
+	# checks both positions depending on when the piece was moved
+	muci = move.uci()
+	if len(muci) == 5:
+		muci = muci[:4]
+	bpa = board.piece_at(chess.parse_square(muci[:2]))
+	if not bpa:
+		bpa = board.piece_at(chess.parse_square(muci[2:]))
+	return bpa.piece_type
 
 def get_color_pieces(board, color, ptypes=CPT_CONV.keys()):
 	ret = {}
@@ -236,16 +243,30 @@ def piece_gives_checkmate(board, at):
 	return False
 
 def move_to_san_better(board, move):
+	#print('inc',move)
 	"""rewrote a san() function because chess.board.san() is almost entirely broken
 	   we also ain't doin no drops or uci tomfoolery"""
 	# Null
 	if not move:
 		return '--'
+	# Check stupid board turn based bs
+	deleted_move = None
+	if not get_piece_type(board, move):
+		deleted_move = board.pop()
+	else:
+		try:
+			board.gives_check(move)
+		except:
+			deleted_move = board.pop()
+			if board.peek() == deleted_move:
+				board.pop()
 	# Castling
 	if board.is_castling(move):
 		if chess.square_file(move.to_square) < chess.square_file(move.from_square):
+			board.push(deleted_move) if deleted_move else None
 			return "O-O-O"
 		else:
+			board.push(deleted_move) if deleted_move else None
 			return "O-O"
 	# Normal move
 	pt = get_piece_type(board, move)
@@ -254,7 +275,7 @@ def move_to_san_better(board, move):
 	san = spt + spos
 	# Disambiguous moves
 	lm = get_all_legal_moves(board, board.turn)
-	same_moves = [m for m in lm if CPT_CONV[get_piece_type(board, chess.Move.from_uci(m))].upper() == cpt]
+	same_moves = [m for m in lm if CPT_CONV[get_piece_type(board, chess.Move.from_uci(m))].upper() == spt]
 	if len(same_moves) == 2:
 		common = same_moves[0][0] if same_moves[0][0] == same_moves[1][0] else same_moves[0][1]
 		for sm in same_moves:
@@ -273,6 +294,7 @@ def move_to_san_better(board, move):
 	# Checkmate
 	if piece_gives_checkmate(board, spos):
 		san = san.replace('+','') + '#'
+	board.push(deleted_move) if deleted_move else None
 	return san
 
 def chess_heuristic():
@@ -405,8 +427,9 @@ class ChessSimpleHeuristic(ChessHeuristic):
 		checkers = list(self.b.checkers())
 		if checkers:
 			for ck in checkers:
+				cks = chess.square_name(chess.Square(ck))
 				score['check'] = 1 if not score['check'] else score['check'] * VALUE_WEIGHT_CHECKMULTIPLIER
-				if piece_gives_checkmate(self.b, ck):
+				if piece_gives_checkmate(self.b, cks):
 					score['checkmate'] += 1
 					break
 		return score
@@ -472,10 +495,22 @@ def debug_input(starting_san=[]):
 
 def debug_lm():
 	board = chess.Board()
-	print(board)
-	print(get_legal_moves_better(board,'b1'))
-	print(get_legal_moves_better(board,'g8'))
-	print(get_legal_moves_better(board,'e2'))
-	print(get_legal_moves_better(board,'c7'))
+	board.push_san('e4')
+	print(move_to_san_better(board,board.peek()))
+	board.push_san('e5')
+	print(move_to_san_better(board,board.peek()))
+	board.push_san('Nc3')
+	print(move_to_san_better(board,board.peek()))
 
-#debug_input()
+def debug_checkmate():
+	board = chess.Board(fen='4k3/7Q/8/6B1/8/8/8/K7 w - - 0 1')
+	move = chess.Move.from_uci('h7e7')
+	color = board.turn
+	csh = ChessSimpleHeuristic(color, board)
+	ocsh = ChessSimpleHeuristic(not color, board)
+	print(board)
+	print(CC_CONV[color], ':', csh.score())
+	print(CC_CONV[not color], ':', -ocsh.score())
+	print(piece_gives_checkmate(board, 'h7'))
+
+#debug_checkmate()

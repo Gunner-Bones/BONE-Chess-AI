@@ -7,7 +7,8 @@ import heuristic as hrs
 Algorithm Types:
 -'random': Plays random moves.
 -'mcts': Monte Carlo tree search: Finds most promising nodes & traverses.
-The Depth field controls how far it will traverse.
+The Depth field controls how far it will traverse vertically.
+The Breadth field controls how far it will search horizontally.
 Evaluation Types:
 -'simple': Hard-coded Chess evaluations.
 """
@@ -15,8 +16,9 @@ Evaluation Types:
 SETTINGS = {
 	'ai_color': 'black',
 	'evaluation': 'simple',
-	'algorithm': 'random',
-	'depth': 100
+	'algorithm': 'mcts',
+	'depth': 15,
+	'breadth': 100
 }
 
 def demo_scholarsmate():
@@ -28,7 +30,7 @@ def demo_scholarsmate():
 	board.push_san("Bc4")
 	board.push_san("Nf6")
 	board.push_san("Qxf7")
-	cg.pca_display(board)
+	cg.pca_display(board) 
 
 def demo_normal():
 	board = chess.Board()
