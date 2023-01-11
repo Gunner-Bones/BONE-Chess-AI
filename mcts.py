@@ -81,7 +81,8 @@ def MCTS(state, game, D, E):
 		#print('-backpropped with new traversal',child.n)
 	filtered_children = [node for node in root.children if node.state.peek().uci() in game.actions(state)]
 	if not filtered_children:
-		return
+		state.push_uci(random.choice(game.actions(state)))
+		return state
 	print(sorted([[c.state.peek().uci(), c.u / c.n] for c in filtered_children],key=lambda x: x[1], reverse=True))
 	best_node = max(filtered_children, key=lambda c: c.u / c.n if c.n else c.u)
 	return best_node.state

@@ -38,6 +38,10 @@ def demo_normal():
 
 def human_vs_ai():
 	cboard = chess.Board()
+	cboard.push_san("e4")
+	cboard.push_san("e5")
+	cboard.push_san("f4")
+	cboard.push_san("a6")
 	cg.pca_ai_display(cboard, SETTINGS)
 
 human_vs_ai()

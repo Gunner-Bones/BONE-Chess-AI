@@ -70,6 +70,10 @@ def pca_find_context_piece(board, styp, pos):
 
 def san_to_pca_move(board, s):
 	# fuck this api lol
+	if 'x' in s:
+		xi = s.index('x')
+		if xi:
+			s = s[xi:]
 	s = s.replace('x','').replace('+','').replace('#','').lower()
 	if s[-2:].startswith('='):
 		s = s[:-2]
@@ -142,6 +146,13 @@ def pca_ai_display(cboard, settings):
 	if settings['evaluation']:
 		PCA_AI_HEUR = pca_ai_heuristics[settings['evaluation']]
 	pboard = Board()
+	if cboard.move_stack:
+		for m in cboard.move_stack:
+			move = m.uci()
+			pos = pca_san_pos(move[2:])
+			pty = [pt for pk,pt in hrs.CPT_CONV.items() if hrs.get_piece_type(cboard, m) == pk][0]
+			piece = pca_find_context_piece(pboard,pty,pos)
+			pboard.move_piece(piece,pos)
 	cmbg = [Piece.WHITE]
 	match settings['ai_color']:
 		case 'white':

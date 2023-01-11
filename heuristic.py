@@ -1,4 +1,5 @@
 import chess
+import random
 
 C_PIECES = {
 	'p': 8,
