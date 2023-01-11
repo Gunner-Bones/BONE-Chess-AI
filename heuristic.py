@@ -284,7 +284,10 @@ def move_to_san_better(board, move):
 				break
 	# Capture
 	if board.is_capture(move):
-		san = spt + 'x' + spos
+		if pt == chess.PAWN:
+			san = chess.square_name(move.from_square)[0] + 'x' + spos
+		else:
+			san = spt + 'x' + spos
 	# Promotion
 	if move.promotion:
 		san += '=' + CPT_CONV[move.promotion].upper()

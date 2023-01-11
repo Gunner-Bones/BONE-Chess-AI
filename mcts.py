@@ -66,19 +66,22 @@ def MCTS(state, game, D, E):
 		node.n += 1
 		if node.parent:
 			backpropagation(node.parent, -utility)
-
+	print(state)
 	root = Node(state=state)
 	for i in range(E):
 		di = 0
-		print('-iteration',i)
+		#print('-iteration',i)
 		leaf = select(root, di)
-		print('-selected')
+		#print('-selected')
 		child = expand(leaf, di)
-		print('-expanded')
+		#print('-expanded')
 		result = rollout(game, child.state, di)
-		print('-rollout result',result)
+		#print('-rollout result',result)
 		backpropagation(child, result)
-		print('-backpropped with new traversal',child.n)
-	print([[c.state.peek().uci(), c.u] for c in root.children])
-	best_node = max(root.children, key=lambda c: c.u / c.n if c.n else c.u)
+		#print('-backpropped with new traversal',child.n)
+	filtered_children = [node for node in root.children if node.state.peek().uci() in game.actions(state)]
+	if not filtered_children:
+		return
+	print(sorted([[c.state.peek().uci(), c.u / c.n] for c in filtered_children],key=lambda x: x[1], reverse=True))
+	best_node = max(filtered_children, key=lambda c: c.u / c.n if c.n else c.u)
 	return best_node.state

@@ -26,7 +26,9 @@ def ai_mcts_player(cboard):
 	global PCA_AI_DEPTH
 	global PCA_AI_BREADTH
 	game = ChessGame(hc=PCA_AI_HEUR)
-	mcts_board = mcts.MCTS(cboard, game, D=PCA_AI_DEPTH, E=PCA_AI_BREADTH)
+	mcts_board = None
+	while not mcts_board:
+		mcts_board = mcts.MCTS(cboard, game, D=PCA_AI_DEPTH, E=PCA_AI_BREADTH)
 	#print('bot move',mcts_board.peek().uci())
 	san_move = hrs.move_to_san_better(mcts_board, mcts_board.peek())
 	return san_move
@@ -114,6 +116,7 @@ def pca_ai_move(pboard):
 	global PCA_AI_CBOARD
 	global PCA_AI_FUNC
 	san = PCA_AI_FUNC(PCA_AI_CBOARD)
+	PCA_AI_CBOARD.push_san(san)
 	print('AI move:',san)
 	san_to_pca_move(pboard, san)
 
