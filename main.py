@@ -38,10 +38,25 @@ def demo_normal():
 
 def human_vs_ai():
 	cboard = chess.Board()
-	cboard.push_san("e4")
-	cboard.push_san("e5")
-	cboard.push_san("f4")
-	cboard.push_san("a6")
 	cg.pca_ai_display(cboard, SETTINGS)
+
+def human_vs_ai_debug(ai=False): # True=White False=Black
+	board = chess.Board()
+	ai_color = ai
+	while True:
+		print(board)
+		if board.turn == ai_color:
+			mcts_move = cg.ai_mcts_player(board)
+			print('AI move:',mcts_move)
+			board.push_san(mcts_move)
+		else:
+			valid_san = False
+			while not valid_san:
+				san = input('Human move ' + hrs.CC_CONV[board.turn] + ':')
+				try:
+					board.push_san(san)
+					valid_san = True
+				except Exception as e:
+					print(e)
 
 human_vs_ai()
